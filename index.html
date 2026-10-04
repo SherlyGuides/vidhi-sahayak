@@ -88,6 +88,11 @@ const store = {
 };
 const params = new URLSearchParams(location.search);
 if (params.get('server')) { store.set('server', params.get('server').replace(/\/+$/, '')); history.replaceState(null, '', location.pathname); }
+// The laptop publishes its current address in config.json, so the plain link always finds the live server.
+const configReady = fetch('config.json?t=' + Date.now(), {cache: 'no-store'})
+  .then(r => r.ok ? r.json() : null)
+  .then(c => { if (c && c.server) store.set('server', c.server.replace(/\/+$/, '')); })
+  .catch(() => {});
 const localHost = /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
 const server = () => store.get('server') || (localHost ? location.origin : '');
 let conversationId = null;
@@ -146,6 +151,7 @@ $('picker').onchange = async () => {
 };
 
 async function ask(text) {
+  await configReady;
   if (!server()) { openSettings(); return; }
   const files = pending; pending = []; showFiles();
   const shown = files.map(f => f.preview ? '<img src="' + f.preview + '" alt="">' : '<div class="fname">📄 ' + esc(f.name) + '</div>').join('');
@@ -185,7 +191,7 @@ async function ask(text) {
 $('f').addEventListener('submit', e => { e.preventDefault(); const t = $('q').value.trim();
   if (t || pending.length) { $('q').value = ''; ask(t); } });
 $('q').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('f').requestSubmit(); } });
-if (!localHost && !server()) openSettings();
+configReady.then(() => { if (!localHost && !server()) openSettings(); });
 </script>
 </body>
 </html>
