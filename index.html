@@ -35,6 +35,15 @@
   button.send { background: var(--accent); color: var(--accent-ink); border: 0; border-radius: 12px; padding: 0 18px;
                 font-weight: 600; cursor: pointer; }
   button.send:disabled { opacity: .45; cursor: default; }
+  .clip { background: var(--panel); border: 1px solid var(--line); color: var(--muted); border-radius: 12px;
+          width: 46px; font-size: 20px; cursor: pointer; }
+  .files { max-width: 760px; margin: 0 auto 6px; display: flex; flex-wrap: wrap; gap: 6px; }
+  .file { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 3px 8px;
+          font-size: 13px; color: var(--muted); display: flex; gap: 6px; align-items: center; max-width: 100%; }
+  .file span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 220px; }
+  .file button { background: none; border: 0; color: var(--muted); cursor: pointer; font-size: 14px; padding: 0; }
+  .msg.user img { max-width: 140px; max-height: 140px; border-radius: 8px; display: block; margin-bottom: 6px; }
+  .msg.user .fname { font-size: 13px; color: var(--muted); }
   dialog { border: 1px solid var(--line); border-radius: 14px; background: var(--panel); color: var(--ink);
            width: min(360px, calc(100vw - 32px)); padding: 20px; }
   dialog::backdrop { background: rgba(0,0,0,.6); }
@@ -53,8 +62,11 @@
 </header>
 <main id="log"></main>
 <form id="f">
+  <div class="files" id="files"></div>
   <div class="bar">
-    <textarea id="q" placeholder="Ask anything…" required></textarea>
+    <button class="clip" id="clip" type="button" aria-label="Attach files">📎</button>
+    <input id="picker" type="file" multiple hidden accept="image/*,.heic,.pdf,.doc,.docx,.rtf,.txt">
+    <textarea id="q" placeholder="Ask anything…"></textarea>
     <button class="send" id="send" type="submit">Ask</button>
   </div>
 </form>
@@ -96,15 +108,55 @@ function add(cls, html) {
 const render = md => DOMPurify.sanitize(marked.parse(md || ''));
 const esc = s => { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; };
 
+let pending = [];  // [{name, type, data(base64), preview}]
+const MAX_FILES = 5;
+function showFiles() {
+  $('files').innerHTML = '';
+  pending.forEach((f, i) => {
+    const d = document.createElement('div'); d.className = 'file';
+    d.innerHTML = '<span></span><button type="button" aria-label="Remove">✕</button>';
+    d.querySelector('span').textContent = f.name;
+    d.querySelector('button').onclick = () => { pending.splice(i, 1); showFiles(); };
+    $('files').appendChild(d);
+  });
+}
+const toB64 = buf => { let s = ''; const b = new Uint8Array(buf);
+  for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode.apply(null, b.subarray(i, i + 0x8000));
+  return btoa(s); };
+async function shrinkImage(file) {
+  // phone photos: resize to max 2000 px JPEG before upload (keeps them readable, much smaller)
+  try {
+    const bmp = await createImageBitmap(file);
+    const scale = Math.min(1, 2000 / Math.max(bmp.width, bmp.height));
+    const c = document.createElement('canvas'); c.width = Math.round(bmp.width * scale); c.height = Math.round(bmp.height * scale);
+    c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+    const url = c.toDataURL('image/jpeg', 0.85);
+    return {name: file.name.replace(/\.[^.]+$/, '') + '.jpg', type: 'image/jpeg', data: url.split(',')[1], preview: url};
+  } catch (e) { return null; }  // e.g. HEIC the browser can't decode: send as-is, the server converts it
+}
+$('clip').onclick = () => $('picker').click();
+$('picker').onchange = async () => {
+  for (const file of $('picker').files) {
+    if (pending.length >= MAX_FILES) break;
+    let item = file.type.startsWith('image/') && !/heic|heif/i.test(file.type) ? await shrinkImage(file) : null;
+    if (!item) item = {name: file.name, type: file.type || '', data: toB64(await file.arrayBuffer()), preview: null};
+    pending.push(item);
+  }
+  $('picker').value = ''; showFiles();
+};
+
 async function ask(text) {
   if (!server() || !store.get('key')) { openSettings(); return; }
-  add('user', esc(text));
+  const files = pending; pending = []; showFiles();
+  const shown = files.map(f => f.preview ? '<img src="' + f.preview + '" alt="">' : '<div class="fname">📄 ' + esc(f.name) + '</div>').join('');
+  add('user', shown + esc(text));
   const box = add('bot', '<span class="dots"></span>');
   let answer = ''; $('send').disabled = true;
   try {
     const res = await fetch(server() + '/v1/chat', {method: 'POST',
       headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer ' + store.get('key')},
-      body: JSON.stringify({conversation_id: conversationId, message: text, stream: true})});
+      body: JSON.stringify({conversation_id: conversationId, message: text, stream: true,
+                            attachments: files.map(({name, type, data}) => ({name, type, data}))})});
     if (!res.ok) {
       let msg = res.statusText; try { msg = (await res.json()).error.message; } catch (e) {}
       if (res.status === 404) conversationId = null;
@@ -130,7 +182,8 @@ async function ask(text) {
   } catch (e) { box.innerHTML = '<span class="error">Can\'t reach the server right now.</span>'; }
   finally { $('send').disabled = false; $('q').focus(); }
 }
-$('f').addEventListener('submit', e => { e.preventDefault(); const t = $('q').value.trim(); if (t) { $('q').value = ''; ask(t); } });
+$('f').addEventListener('submit', e => { e.preventDefault(); const t = $('q').value.trim();
+  if (t || pending.length) { $('q').value = ''; ask(t); } });
 $('q').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('f').requestSubmit(); } });
 if (!store.get('key') || (!localHost && !server())) openSettings();
 </script>
