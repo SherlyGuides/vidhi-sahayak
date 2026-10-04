@@ -95,11 +95,12 @@
 
 <dialog id="settings">
   <form method="dialog" id="settingsForm">
-    <strong>Connect to the server</strong>
-    <label for="srv">Server address</label>
+    <strong>Enter access code</strong>
+    <label for="key">Access code</label>
+    <input id="key" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="12" placeholder="••••"
+           autocomplete="off" style="font-size:22px;letter-spacing:6px;text-align:center">
+    <label for="srv">Server address <span style="opacity:.7">(filled in automatically from your link)</span></label>
     <input id="srv" placeholder="https://….trycloudflare.com" autocomplete="off">
-    <label for="key">Access key</label>
-    <input id="key" type="password" placeholder="vs_…" autocomplete="off">
     <div class="row">
       <button class="iconbtn" value="cancel" type="button" id="cancelBtn">Cancel</button>
       <button class="send" value="save" type="submit" style="padding:8px 16px">Save</button>
@@ -129,7 +130,7 @@ async function checkConn() {
     el.textContent = j.ok ? 'online' : 'offline'; el.className = 'conn ' + (j.ok ? 'ok' : 'bad'); return j.ok;
   } catch (e) { el.textContent = 'server offline'; el.className = 'conn bad'; return false; }
 }
-function openSettings() { $('srv').value = server(); $('key').value = store.get('key'); $('settings').showModal(); }
+function openSettings() { $('srv').value = server(); $('key').value = store.get('key'); $('settings').showModal(); $('key').focus(); }
 $('settingsBtn').onclick = openSettings;
 $('cancelBtn').onclick = () => $('settings').close();
 $('settingsForm').addEventListener('submit', () => {
@@ -160,7 +161,7 @@ async function ask(text) {
       let msg = res.statusText; try { msg = (await res.json()).error.message; } catch (e) {}
       if (res.status === 404) conversationId = null;
       body.innerHTML = '<span class="error">' + esc(msg) + '</span>';
-      if (res.status === 401) openSettings();
+      if (res.status === 401) { store.set('key', ''); openSettings(); }
       return;
     }
     const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = '';
@@ -184,7 +185,7 @@ async function ask(text) {
 $('f').addEventListener('submit', e => { e.preventDefault(); const t = $('q').value.trim(); if (t) { $('q').value = ''; ask(t); } });
 $('q').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('f').requestSubmit(); } });
 document.querySelectorAll('.chip').forEach(c => c.addEventListener('click', () => ask(c.textContent)));
-checkConn().then(ok => { if (!ok && !localHost && !server()) openSettings(); });
+checkConn().then(() => { if (!store.get('key') || (!localHost && !server())) openSettings(); });
 </script>
 </body>
 </html>
