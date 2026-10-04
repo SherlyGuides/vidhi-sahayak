@@ -146,7 +146,7 @@ $('picker').onchange = async () => {
 };
 
 async function ask(text) {
-  if (!server() || !store.get('key')) { openSettings(); return; }
+  if (!server()) { openSettings(); return; }
   const files = pending; pending = []; showFiles();
   const shown = files.map(f => f.preview ? '<img src="' + f.preview + '" alt="">' : '<div class="fname">📄 ' + esc(f.name) + '</div>').join('');
   add('user', shown + esc(text));
@@ -154,7 +154,7 @@ async function ask(text) {
   let answer = ''; $('send').disabled = true;
   try {
     const res = await fetch(server() + '/v1/chat', {method: 'POST',
-      headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer ' + store.get('key')},
+      headers: Object.assign({'Content-Type': 'application/json'}, store.get('key') ? {'Authorization': 'Bearer ' + store.get('key')} : {}),
       body: JSON.stringify({conversation_id: conversationId, message: text, stream: true,
                             attachments: files.map(({name, type, data}) => ({name, type, data}))})});
     if (!res.ok) {
@@ -185,7 +185,7 @@ async function ask(text) {
 $('f').addEventListener('submit', e => { e.preventDefault(); const t = $('q').value.trim();
   if (t || pending.length) { $('q').value = ''; ask(t); } });
 $('q').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('f').requestSubmit(); } });
-if (!store.get('key') || (!localHost && !server())) openSettings();
+if (!localHost && !server()) openSettings();
 </script>
 </body>
 </html>
