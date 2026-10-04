@@ -91,7 +91,8 @@ if (params.get('server')) { store.set('server', params.get('server').replace(/\/
 // The laptop publishes its current address in config.json, so the plain link always finds the live server.
 const configReady = fetch('config.json?t=' + Date.now(), {cache: 'no-store'})
   .then(r => r.ok ? r.json() : null)
-  .then(c => { if (c && c.server) store.set('server', c.server.replace(/\/+$/, '')); })
+  .then(c => { if (c && c.server) store.set('server', c.server.replace(/\/+$/, ''));
+               if (c && c.fallback) store.set('fallback', c.fallback.replace(/\/+$/, '')); })
   .catch(() => {});
 const localHost = /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
 const server = () => store.get('server') || (localHost ? location.origin : '');
@@ -150,26 +151,57 @@ $('picker').onchange = async () => {
   $('picker').value = ''; showFiles();
 };
 
+// Servers in order of preference: the laptop first, then the always-on backup. If one is unreachable or busy the
+// same question goes to the next, carrying the conversation so far, so the user never sees the switch.
+const servers = () => [...new Set([server(), store.get('fallback')].filter(Boolean))];
+let convServer = null;  // which server holds conversationId
+let turns = [];         // [{role, text}] of this conversation, sent along when it moves to another server
+const SWITCH = new Set([502, 503, 504, 520, 521, 522, 523, 524, 525, 526, 527, 530]);
+
+async function post(srv, body) {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 20000);  // no response headers in 20 s: treat the server as down
+  try {
+    return await fetch(srv + '/v1/chat', {method: 'POST', signal: ctl.signal,
+      headers: Object.assign({'Content-Type': 'application/json'}, store.get('key') ? {'Authorization': 'Bearer ' + store.get('key')} : {}),
+      body: JSON.stringify(body)});
+  } finally { clearTimeout(timer); }
+}
+
 async function ask(text) {
   await configReady;
-  if (!server()) { openSettings(); return; }
+  if (!servers().length) { openSettings(); return; }
   const files = pending; pending = []; showFiles();
   const shown = files.map(f => f.preview ? '<img src="' + f.preview + '" alt="">' : '<div class="fname">📄 ' + esc(f.name) + '</div>').join('');
   add('user', shown + esc(text));
   const box = add('bot', '<span class="dots"></span>');
   let answer = ''; $('send').disabled = true;
+  const attachments = files.map(({name, type, data}) => ({name, type, data}));
   try {
-    const res = await fetch(server() + '/v1/chat', {method: 'POST',
-      headers: Object.assign({'Content-Type': 'application/json'}, store.get('key') ? {'Authorization': 'Bearer ' + store.get('key')} : {}),
-      body: JSON.stringify({conversation_id: conversationId, message: text, stream: true,
-                            attachments: files.map(({name, type, data}) => ({name, type, data}))})});
+    let res = null, used = null, failMsg = null;
+    const order = servers().sort((a, b) => (b === convServer) - (a === convServer));
+    for (const srv of order) {
+      const same = conversationId && srv === convServer;
+      const body = {conversation_id: same ? conversationId : null, message: text, stream: true, attachments,
+                    history: same ? [] : turns.slice(-10)};
+      try {
+        res = await post(srv, body);
+        if (res.status === 404 && same) {  // conversation expired on that server: start afresh there with history
+          res = await post(srv, Object.assign(body, {conversation_id: null, history: turns.slice(-10)}));
+        }
+        if (res.ok) { used = srv; break; }
+        if (SWITCH.has(res.status)) { res = null; continue; }
+        break;  // a real answer from the server (e.g. a validation message): show it
+      } catch (e) { res = null; }  // unreachable or timed out: try the next server
+    }
+    if (!res) { box.innerHTML = '<span class="error">Can\'t reach the server right now. Please try again in a minute.</span>'; return; }
     if (!res.ok) {
       let msg = res.statusText; try { msg = (await res.json()).error.message; } catch (e) {}
-      if (res.status === 404) conversationId = null;
       box.innerHTML = '<span class="error">' + esc(msg) + '</span>';
       if (res.status === 401) { store.set('key', ''); openSettings(); }
       return;
     }
+    if (used !== convServer) { convServer = used; conversationId = null; }
     const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = '';
     while (true) {
       const {value, done} = await reader.read(); if (done) break;
@@ -185,13 +217,14 @@ async function ask(text) {
       }
     }
     if (!answer && box.querySelector('.dots')) box.innerHTML = '<span class="error">No answer received. Please try again.</span>';
-  } catch (e) { box.innerHTML = '<span class="error">Can\'t reach the server right now.</span>'; }
+    if (answer) turns.push({role: 'user', text: text || '(attached file)'}, {role: 'assistant', text: answer});
+  } catch (e) { box.innerHTML = '<span class="error">The connection dropped. Please try again.</span>'; }
   finally { $('send').disabled = false; $('q').focus(); }
 }
 $('f').addEventListener('submit', e => { e.preventDefault(); const t = $('q').value.trim();
   if (t || pending.length) { $('q').value = ''; ask(t); } });
 $('q').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('f').requestSubmit(); } });
-configReady.then(() => { if (!localHost && !server()) openSettings(); });
+configReady.then(() => { if (!localHost && !servers().length) openSettings(); });
 </script>
 </body>
 </html>
