@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vidhi Sahayak</title>
+<meta name="description" content="Delhi Police service matters and departmental enquiries assistant">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js"></script>
+<style>
+  :root {
+    --bg: #f6f5f1; --panel: #ffffff; --ink: #1d232b; --muted: #5f6b78; --line: #e2e0d8;
+    --accent: #1f3c6e; --accent-ink: #ffffff; --user: #e8eef8; --warn: #8a4b0f; --ok: #2e6b3a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #14171c; --panel: #1c2027; --ink: #e8eaed; --muted: #9aa4b1; --line: #2c323b;
+      --accent: #8fb0e8; --accent-ink: #0f1520; --user: #232c3a; --warn: #e2a96b; --ok: #7fc28e;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", "Noto Sans Devanagari", sans-serif; }
+  header { padding: 12px 16px; border-bottom: 1px solid var(--line); background: var(--panel);
+           display: flex; align-items: center; gap: 12px; }
+  header .t { flex: 1; min-width: 0; }
+  header h1 { margin: 0; font-size: 18px; }
+  header p { margin: 2px 0 0; color: var(--muted); font-size: 13px; }
+  .conn { font-size: 12px; color: var(--muted); white-space: nowrap; }
+  .conn.ok::before { content: "● "; color: var(--ok); }
+  .conn.bad::before { content: "● "; color: var(--warn); }
+  .iconbtn { border: 1px solid var(--line); background: var(--panel); color: var(--ink); border-radius: 8px;
+             padding: 6px 10px; cursor: pointer; font-size: 13px; }
+  main { max-width: 820px; margin: 0 auto; padding: 16px 16px 150px; }
+  .msg { margin: 14px 0; padding: 12px 14px; border-radius: 10px; background: var(--panel);
+         border: 1px solid var(--line); overflow-wrap: anywhere; }
+  .msg.user { background: var(--user); border-color: transparent; white-space: pre-wrap; }
+  .msg table { border-collapse: collapse; font-size: 14px; display: block; overflow-x: auto; }
+  .msg td, .msg th { border: 1px solid var(--line); padding: 4px 8px; }
+  .msg a { color: var(--accent); }
+  .status { color: var(--muted); font-size: 13px; margin: 2px 0; }
+  .status::before { content: "• "; }
+  .error { color: var(--warn); }
+  .intro { color: var(--muted); }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+  .chip { border: 1px solid var(--line); background: var(--panel); color: var(--ink); border-radius: 16px;
+          padding: 6px 12px; font-size: 14px; cursor: pointer; text-align: left; }
+  form#f { position: fixed; bottom: 0; left: 0; right: 0; background: var(--bg); border-top: 1px solid var(--line);
+           padding: 10px 16px 14px; }
+  .bar { max-width: 820px; margin: 0 auto; display: flex; gap: 8px; }
+  textarea { flex: 1; resize: none; height: 52px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line);
+             background: var(--panel); color: var(--ink); font: inherit; }
+  button.send { background: var(--accent); color: var(--accent-ink); border: 0; border-radius: 10px; padding: 0 18px;
+                font-weight: 600; cursor: pointer; }
+  button.send:disabled { opacity: .5; cursor: default; }
+  .note { max-width: 820px; margin: 6px auto 0; color: var(--muted); font-size: 12px; display: flex; gap: 12px; }
+  .note a { color: var(--muted); }
+  dialog { border: 1px solid var(--line); border-radius: 12px; background: var(--panel); color: var(--ink);
+           width: min(460px, calc(100vw - 32px)); padding: 18px; }
+  dialog label { display: block; font-size: 13px; color: var(--muted); margin: 12px 0 4px; }
+  dialog input { width: 100%; padding: 9px 10px; border: 1px solid var(--line); border-radius: 8px;
+                 background: var(--bg); color: var(--ink); font: inherit; }
+  dialog .row { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="t">
+    <h1>Vidhi Sahayak</h1>
+    <p>Delhi Police service matters &amp; departmental enquiries · English / हिन्दी</p>
+  </div>
+  <span id="conn" class="conn">not connected</span>
+  <button class="iconbtn" id="settingsBtn" type="button">Settings</button>
+</header>
+<main id="log">
+  <div class="msg intro">
+    Ask about departmental enquiries, suspension, appeals, promotion, pay, leave, pension or welfare. Answers cite
+    the rule, order or judgment they rely on. Don't include names of officers or witnesses.
+    <div class="chips">
+      <button class="chip">A summary of allegations was served on me. What are my rights and deadlines?</button>
+      <button class="chip">Can a DE continue after I was acquitted in the criminal case?</button>
+      <button class="chip">मुझे सस्पेंड किया गया है — subsistence allowance कितना मिलेगा?</button>
+      <button class="chip">How long do I have to appeal a punishment order, and to whom?</button>
+    </div>
+  </div>
+</main>
+<form id="f">
+  <div class="bar">
+    <textarea id="q" placeholder="Type your question… (Enter to send, Shift+Enter for a new line)" required></textarea>
+    <button class="send" id="send" type="submit">Ask</button>
+  </div>
+  <div class="note"><span>Legal information, not legal advice. Check important decisions with your Establishment branch or a defence assistant.</span>
+    <a href="#" id="newChat">New chat</a></div>
+</form>
+
+<dialog id="settings">
+  <form method="dialog" id="settingsForm">
+    <strong>Connect to the server</strong>
+    <label for="srv">Server address</label>
+    <input id="srv" placeholder="https://….trycloudflare.com" autocomplete="off">
+    <label for="key">Access key</label>
+    <input id="key" type="password" placeholder="vs_…" autocomplete="off">
+    <div class="row">
+      <button class="iconbtn" value="cancel" type="button" id="cancelBtn">Cancel</button>
+      <button class="send" value="save" type="submit" style="padding:8px 16px">Save</button>
+    </div>
+  </form>
+</dialog>
+
+<script>
+const $ = id => document.getElementById(id);
+const store = {
+  get(k) { try { return localStorage.getItem('vs_' + k) || ''; } catch (e) { return ''; } },
+  set(k, v) { try { localStorage.setItem('vs_' + k, v); } catch (e) {} }
+};
+// Server: ?server=… link param > saved setting > same origin when served by the laptop itself.
+const params = new URLSearchParams(location.search);
+if (params.get('server')) { store.set('server', params.get('server').replace(/\/+$/, '')); history.replaceState(null, '', location.pathname); }
+const localHost = /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
+function server() { return store.get('server') || (localHost ? location.origin : ''); }
+let conversationId = null;
+
+async function checkConn() {
+  const el = $('conn');
+  if (!server()) { el.textContent = 'not connected'; el.className = 'conn bad'; return false; }
+  try {
+    const r = await fetch(server() + '/v1/health', {cache: 'no-store'});
+    const j = await r.json();
+    el.textContent = j.ok ? 'online' : 'offline'; el.className = 'conn ' + (j.ok ? 'ok' : 'bad'); return j.ok;
+  } catch (e) { el.textContent = 'server offline'; el.className = 'conn bad'; return false; }
+}
+function openSettings() { $('srv').value = server(); $('key').value = store.get('key'); $('settings').showModal(); }
+$('settingsBtn').onclick = openSettings;
+$('cancelBtn').onclick = () => $('settings').close();
+$('settingsForm').addEventListener('submit', () => {
+  store.set('server', $('srv').value.trim().replace(/\/+$/, '')); store.set('key', $('key').value.trim());
+  conversationId = null; checkConn();
+});
+$('newChat').onclick = e => { e.preventDefault(); conversationId = null;
+  document.querySelectorAll('#log .msg:not(.intro)').forEach(n => n.remove()); };
+
+function add(cls, html) {
+  const d = document.createElement('div'); d.className = 'msg ' + cls; d.innerHTML = html;
+  $('log').appendChild(d); d.scrollIntoView({block: 'end'}); return d;
+}
+function render(md) { return DOMPurify.sanitize(marked.parse(md || '')); }
+function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+async function ask(text) {
+  if (!server() || !store.get('key')) { openSettings(); return; }
+  add('user', esc(text));
+  const box = add('bot', ''); const statusEl = document.createElement('div'); const body = document.createElement('div');
+  box.append(statusEl, body);
+  let answer = ''; $('send').disabled = true;
+  try {
+    const res = await fetch(server() + '/v1/chat', {method: 'POST',
+      headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer ' + store.get('key')},
+      body: JSON.stringify({conversation_id: conversationId, message: text, stream: true})});
+    if (!res.ok) {
+      let msg = res.statusText; try { msg = (await res.json()).error.message; } catch (e) {}
+      if (res.status === 404) conversationId = null;
+      body.innerHTML = '<span class="error">' + esc(msg) + '</span>';
+      if (res.status === 401) openSettings();
+      return;
+    }
+    const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = '';
+    while (true) {
+      const {value, done} = await reader.read(); if (done) break;
+      buf += dec.decode(value, {stream: true});
+      let i;
+      while ((i = buf.indexOf('\n\n')) >= 0) {
+        const line = buf.slice(0, i); buf = buf.slice(i + 2);
+        if (!line.startsWith('data: ')) continue;
+        const ev = JSON.parse(line.slice(6));
+        if (ev.type === 'conversation') conversationId = ev.conversation_id;
+        else if (ev.type === 'status') { const s = document.createElement('div'); s.className = 'status'; s.textContent = ev.text; statusEl.appendChild(s); }
+        else if (ev.type === 'text') { answer += ev.text; body.innerHTML = render(answer); box.scrollIntoView({block: 'end'}); }
+        else if (ev.type === 'error') { body.innerHTML += '<p class="error">' + esc(ev.text) + '</p>'; }
+      }
+    }
+  } catch (e) { body.innerHTML += '<p class="error">Could not reach the server. Is the laptop on and the server running?</p>'; checkConn(); }
+  finally { $('send').disabled = false; $('q').focus(); }
+}
+$('f').addEventListener('submit', e => { e.preventDefault(); const t = $('q').value.trim(); if (t) { $('q').value = ''; ask(t); } });
+$('q').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('f').requestSubmit(); } });
+document.querySelectorAll('.chip').forEach(c => c.addEventListener('click', () => ask(c.textContent)));
+checkConn().then(ok => { if (!ok && !localHost && !server()) openSettings(); });
+</script>
+</body>
+</html>
